@@ -1,13 +1,19 @@
-from enum import unique
+from enum import Enum, unique
 from flask_sqlalchemy import SQLAlchemy
 
 db = SQLAlchemy()
+
+class Nature(Enum):
+    character = "character",
+    planets = "planet"
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password = db.Column(db.String(80), unique=False, nullable=False)
+
+    favorites = db.relationship("Favorites", backref="user", uselist=True) #Stablishes a relation of one (User) to many (Favorites)
 
     def __repr__(self):
         return '<User %r>' % self.username
@@ -23,23 +29,23 @@ class User(db.Model):
 # Funky, need to check relations
 class Favorites(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-
-    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), unique=True, nullable=False)
-    user = db.relationship("User")
-    character_id = db.Column(db.Integer, db.ForeignKey("character.id"), unique=False)
-    character = db.relationship("Character")
-    planet_id = db.Column(db.Integer, db.ForeignKey("planet.id"), unique=False)
-    planet = db.relationship("Planet")
-
+    nature = db.Column(db.Enum(Nature), nullable=False)
+    name = db.Column(db.String(100))
+    
+    nature_id = db.Column(db.Integer, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+  
+    # __table_args__ = (db.UniqueConstraint(), {
+    #     "user.id",
+    #     "name_favorite"
+    # })
+   
     def serialize(self):
         return {
             "id": self.id,
             "user_id": self.user_id,
-            "user": self.user,
-            "character_id": self.character_id,
-            "character": self.character,
-            "planet_id": self.planet_id,
-            "planet": self.planet
+            "name": self.name,
+            "nature": self.nature.name
         }
 
 class Character(db.Model):

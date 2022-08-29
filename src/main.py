@@ -37,6 +37,22 @@ def handle_invalid_usage(error):
 def sitemap():
     return generate_sitemap(app)
 
+def filter_character(items):
+    result = []
+    for item in items:
+        current = item.serialize() 
+        if current["nature"] == "character":
+            result.append(current)
+    return result
+
+def filter_planet(items):
+    result = []
+    for item in items:
+        current = item.serialize() 
+        if current["nature"] == "planets":
+            result.append(current)
+    return result
+
 # User methods, CRUD complete
 # Works fine, gets users from database
 @app.route('/users', methods=['GET'])
@@ -128,7 +144,152 @@ def delete_user(user_id = None):
                 return jsonify({"message": f"Error {error.args}"})
 
 # Favorite Methods
-# Have to ask if there are any special procedures for database linking
+# Works as intended? Need to test with actual data
+
+# Questions
+# How do I relate the user to the favorite table from here
+# How do I use Enums to validate data from here
+# How do I serialize Enums
+
+# Maybe use Enums as filter list, instead of comparators?
+
+# Why is there a serialize error in the second get but not the first
+# Why did the POST work with a character that doesn't exist
+
+
+@app.route("/users/<int:user_id>/favorites", methods=['GET'])
+@app.route("/users/<int:user_id>/favorites/<string:nature>/", methods=['GET'])
+@app.route("/users/<int:user_id>/favorites/<string:nature>/<int:favorite_id>", methods=['GET'])
+def get_favorite(user_id = None, nature = None, favorite_id=None):
+    if request.method == 'GET':
+        user = User.query.get(user_id)
+        if user is None:
+            return jsonify({"message": "Error, couldn't find user"}), 404
+        elif user is not None:
+            if nature is None:
+                favorites = Favorites()
+                favorites = Favorites.query.all()
+                return jsonify(list(map(lambda items: items.serialize(), favorites))), 200
+                
+            elif nature is not None:    
+                if nature != 'character' and nature != 'planet':
+                    return jsonify({"message": "Error, bad request"}), 400
+                else:
+                    if nature == 'character' and favorite_id is None:
+                        favorites = Favorites.query.all()
+                        favorite_character = filter_character(favorites)
+                        return jsonify(favorite_character), 200
+
+                    elif nature == 'character' and favorite_id is not None:
+                        favorite = Favorites.query.get(favorite_id)
+                        if favorite is None:
+                            return jsonify({"message": "Error, couldn't find character"}), 404
+                        elif favorite is not None:
+                            if favorite.serialize()["nature"] != "character":
+                                return jsonify({"message": "Error, favorite isn't a character"}), 406
+                            else:
+                                return jsonify(favorite.serialize()), 200
+
+                    elif nature == 'planet' and favorite_id is None:
+                        favorites = Favorites.query.all()
+                        favorite_planet = filter_planet(favorites)
+                        return jsonify(favorite_planet), 200
+
+                    elif nature == 'planet' and favorite_id is not None:
+                        favorite = Favorites.query.get(favorite_id)
+                        if favorite is None:
+                            return jsonify({"message": "Error, couldn't find planet"}), 404
+                        elif favorite is not None:
+                            if favorite.serialize()["nature"] != "planets":
+                                return jsonify({"message": "Error, favorite isn't a planet"}), 406
+                            else:
+                                return jsonify(favorite.serialize()), 200
+
+# Work in Progress, POST method
+@app.route("/users/<int:user_id>/favorites", methods=['POST'])
+def handle_favorites(user_id = None):
+    if request.method == 'POST':
+        user = User.query.get(user_id)
+        if user is None:
+            return jsonify({"message":"Error, couldn't find user"}), 404
+        elif user is not None:
+
+            body = request.json
+            if body.get("nature") != "character" and body["nature"] != "planet" :
+                return jsonify({"message":"Error, bad property"}), 400
+            elif body.get("name") is None:
+                return jsonify({"message":"Error, bad property"}), 400
+            elif body.get("nature_id") is None :
+                return jsonify({"message":"Error, bad property"}), 400
+
+            new_favorite = Favorites(name=body.get("name"), nature=body.get("nature"), nature_id=body.get("nature_id"), user_id=user_id)
+            
+            db.session.add(new_favorite)
+
+            try:
+                db.session.commit()
+                return jsonify(new_favorite.serialize()), 201
+            except Exception as error:
+                print(error.args)
+                db.session.rollback()
+                return jsonify({"message": f"Error {error.args}"}), 500
+
+# Work in Progress, PUT method
+@app.route("/users/<int:user_id>/favorites/<string:nature>/<int:favorite_id>", methods=['PUT'])
+def update_favorite(user_id = None, nature = None, favorite_id=None):
+    if request.method == 'PUT':
+        body = request.json
+        if user_id is None:
+            return jsonify({"message": "Error, couldn't find user"}), 404
+        else:
+            if nature is None and nature != "character" and nature != "planet":
+                return jsonify({"message": "Error, invalid or missing nature"}), 406
+            else:
+                updated_favorite = Favorites.query.get(favorite_id)
+                if updated_favorite is None:
+                    return jsonify({"message": "Error, couldn't find favorite"}), 404
+                else:
+                    updated_favorite.name = body.get("name")
+                    updated_favorite.nature = body.get("nature")
+                    updated_favorite.nature_id = body.get("nature_id")
+
+                    try:
+                        db.session.commit()
+                        return jsonify([]), 201
+                    except Exception as error:
+                        print(error.args)
+                        db.session.rollback()
+                        return jsonify({"message": f"Error {error.args}"})
+
+# Work Done, DELETE method
+@app.route("/users/<int:user_id>/favorites/<string:nature>/<int:favorite_id>", methods=['DELETE'])
+def delete_favorite(user_id = None, nature = None, favorite_id = None):
+    if request.method == 'DELETE':
+        user = User.query.get(user_id)
+        if user is None:
+            return jsonify({"message": "Error, couldn't find user"}), 404
+        elif user is not None:
+            if nature is None and nature != "character" and nature != "planet":
+                return jsonify({"message": "Error, invalid or missing nature"}), 406
+            else:
+                if favorite_id is None:
+                    return jsonify({"message": "Error, missing favorite id"}), 400
+                elif favorite_id is not None:
+                    deleted_favorite = Favorites.query.get(favorite_id)
+                    if deleted_favorite is None:
+                        return jsonify({"message": "Error, couldn't find favorite"}), 404
+                    elif deleted_favorite is not None:
+                        db.session.delete(deleted_favorite)
+
+                        try:
+                            db.session.commit()
+                            return jsonify([]), 204
+                        except Exception as error:
+                            print(error.args)
+                            db.session.rollback()
+                            return jsonify({"message": f"Error {error.args}"})
+
+# Can unify these GETs, can call other databases from a function
 
 # Planet methods, CRUD complete
 # Works fine, gets planets from database
